@@ -19,6 +19,7 @@ pub mod browser;
 pub mod browser_open;
 pub mod cli_discovery;
 pub mod composio;
+pub mod content_search;
 pub mod cron_add;
 pub mod cron_list;
 pub mod cron_remove;
@@ -31,8 +32,11 @@ pub mod file_read;
 pub mod file_write;
 pub mod git_operations;
 pub mod glob_search;
+#[cfg(feature = "hardware")]
 pub mod hardware_board_info;
+#[cfg(feature = "hardware")]
 pub mod hardware_memory_map;
+#[cfg(feature = "hardware")]
 pub mod hardware_memory_read;
 pub mod http_request;
 pub mod image_info;
@@ -48,11 +52,13 @@ pub mod schema;
 pub mod screenshot;
 pub mod shell;
 pub mod traits;
+pub mod web_fetch;
 pub mod web_search_tool;
 
 pub use browser::{BrowserTool, ComputerUseConfig};
 pub use browser_open::BrowserOpenTool;
 pub use composio::ComposioTool;
+pub use content_search::ContentSearchTool;
 pub use cron_add::CronAddTool;
 pub use cron_list::CronListTool;
 pub use cron_remove::CronRemoveTool;
@@ -65,8 +71,11 @@ pub use file_read::FileReadTool;
 pub use file_write::FileWriteTool;
 pub use git_operations::GitOperationsTool;
 pub use glob_search::GlobSearchTool;
+#[cfg(feature = "hardware")]
 pub use hardware_board_info::HardwareBoardInfoTool;
+#[cfg(feature = "hardware")]
 pub use hardware_memory_map::HardwareMemoryMapTool;
+#[cfg(feature = "hardware")]
 pub use hardware_memory_read::HardwareMemoryReadTool;
 pub use http_request::HttpRequestTool;
 pub use image_info::ImageInfoTool;
@@ -85,6 +94,7 @@ pub use shell::ShellTool;
 pub use traits::Tool;
 #[allow(unused_imports)]
 pub use traits::{ToolResult, ToolSpec};
+pub use web_fetch::WebFetchTool;
 pub use web_search_tool::WebSearchTool;
 
 use crate::config::{Config, DelegateAgentConfig};
@@ -144,7 +154,8 @@ pub fn default_tools_with_runtime(
         Box::new(FileReadTool::new(security.clone())),
         Box::new(FileWriteTool::new(security.clone())),
         Box::new(FileEditTool::new(security.clone())),
-        Box::new(GlobSearchTool::new(security)),
+        Box::new(GlobSearchTool::new(security.clone())),
+        Box::new(ContentSearchTool::new(security)),
     ]
 }
 
@@ -158,6 +169,7 @@ pub fn all_tools(
     composio_entity_id: Option<&str>,
     browser_config: &crate::config::BrowserConfig,
     http_config: &crate::config::HttpRequestConfig,
+    web_fetch_config: &crate::config::WebFetchConfig,
     workspace_dir: &std::path::Path,
     agents: &HashMap<String, DelegateAgentConfig>,
     fallback_api_key: Option<&str>,
@@ -172,6 +184,7 @@ pub fn all_tools(
         composio_entity_id,
         browser_config,
         http_config,
+        web_fetch_config,
         workspace_dir,
         agents,
         fallback_api_key,
@@ -190,6 +203,7 @@ pub fn all_tools_with_runtime(
     composio_entity_id: Option<&str>,
     browser_config: &crate::config::BrowserConfig,
     http_config: &crate::config::HttpRequestConfig,
+    web_fetch_config: &crate::config::WebFetchConfig,
     workspace_dir: &std::path::Path,
     agents: &HashMap<String, DelegateAgentConfig>,
     fallback_api_key: Option<&str>,
@@ -201,6 +215,7 @@ pub fn all_tools_with_runtime(
         Arc::new(FileWriteTool::new(security.clone())),
         Arc::new(FileEditTool::new(security.clone())),
         Arc::new(GlobSearchTool::new(security.clone())),
+        Arc::new(ContentSearchTool::new(security.clone())),
         Arc::new(CronAddTool::new(config.clone(), security.clone())),
         Arc::new(CronListTool::new(config.clone())),
         Arc::new(CronRemoveTool::new(config.clone(), security.clone())),
@@ -262,6 +277,16 @@ pub fn all_tools_with_runtime(
         )));
     }
 
+    if web_fetch_config.enabled {
+        tool_arcs.push(Arc::new(WebFetchTool::new(
+            security.clone(),
+            web_fetch_config.allowed_domains.clone(),
+            web_fetch_config.blocked_domains.clone(),
+            web_fetch_config.max_response_size,
+            web_fetch_config.timeout_secs,
+        )));
+    }
+
     // Web search tool (enabled by default for GLM and other models)
     if root_config.web_search.enabled {
         tool_arcs.push(Arc::new(WebSearchTool::new(
@@ -306,6 +331,7 @@ pub fn all_tools_with_runtime(
             security.clone(),
             crate::providers::ProviderRuntimeOptions {
                 auth_profile_override: None,
+                provider_api_url: root_config.api_url.clone(),
                 zeroclaw_dir: root_config
                     .config_path
                     .parent()
@@ -340,7 +366,7 @@ mod tests {
     fn default_tools_has_expected_count() {
         let security = Arc::new(SecurityPolicy::default());
         let tools = default_tools(security);
-        assert_eq!(tools.len(), 5);
+        assert_eq!(tools.len(), 6);
     }
 
     #[test]
@@ -371,6 +397,7 @@ mod tests {
             None,
             &browser,
             &http,
+            &crate::config::WebFetchConfig::default(),
             tmp.path(),
             &HashMap::new(),
             None,
@@ -412,6 +439,7 @@ mod tests {
             None,
             &browser,
             &http,
+            &crate::config::WebFetchConfig::default(),
             tmp.path(),
             &HashMap::new(),
             None,
@@ -419,6 +447,7 @@ mod tests {
         );
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(names.contains(&"browser_open"));
+        assert!(names.contains(&"content_search"));
         assert!(names.contains(&"model_routing_config"));
         assert!(names.contains(&"pushover"));
         assert!(names.contains(&"proxy_config"));
@@ -434,6 +463,7 @@ mod tests {
         assert!(names.contains(&"file_write"));
         assert!(names.contains(&"file_edit"));
         assert!(names.contains(&"glob_search"));
+        assert!(names.contains(&"content_search"));
     }
 
     #[test]
@@ -559,6 +589,7 @@ mod tests {
             None,
             &browser,
             &http,
+            &crate::config::WebFetchConfig::default(),
             tmp.path(),
             &agents,
             Some("delegate-test-credential"),
@@ -591,6 +622,7 @@ mod tests {
             None,
             &browser,
             &http,
+            &crate::config::WebFetchConfig::default(),
             tmp.path(),
             &HashMap::new(),
             None,
