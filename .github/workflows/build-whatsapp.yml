@@ -3,6 +3,9 @@ name: Build WhatsApp Web (aarch64)
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -30,6 +33,12 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Package
         run: |
           cd target/aarch64-unknown-linux-gnu/release
@@ -40,3 +49,21 @@ jobs:
         with:
           name: zeroclaw-aarch64-whatsapp-web
           path: zeroclaw-aarch64-whatsapp-web.tar.gz
+
+      - name: Delete existing release
+        run: gh release delete whatsapp-latest --yes 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete existing tag
+        run: git push origin :refs/tags/whatsapp-latest 2>/dev/null || true
+
+      - name: Create release
+        run: |
+          gh release create whatsapp-latest \
+            zeroclaw-aarch64-whatsapp-web.tar.gz \
+            --title "WhatsApp Web Build (v${{ steps.version.outputs.version }})" \
+            --notes "Auto-built from upstream v${{ steps.version.outputs.version }} with --features whatsapp-web for aarch64." \
+            --prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
