@@ -69,7 +69,7 @@ Lưu ý:
 ## Cách B: Lệnh từ xa một dòng
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/zeroclaw-labs/zeroclaw/main/scripts/bootstrap.sh | bash
+curl -fsSL https://zeroclawlabs.ai/install.sh | bash
 ```
 
 Với môi trường yêu cầu bảo mật cao, nên dùng Cách A để kiểm tra script trước khi chạy.
@@ -128,7 +128,7 @@ Xem tất cả tùy chọn:
 
 ## Tài liệu liên quan
 
-- [README.vi.md](../../../README.vi.md)
+- [docs/i18n/vi/README.md](README.md)
 - [commands-reference.md](commands-reference.md)
 - [providers-reference.md](providers-reference.md)
 - [channels-reference.md](channels-reference.md)
